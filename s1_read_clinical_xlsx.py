@@ -27,7 +27,7 @@ def filter_and_save_data(ids_path, data_file, output_file):
         modify_file = final_data.rename(columns=columns_needed, inplace=False)
         modify_file['Grade'] = (modify_file['Grade'] >= 2).astype(int)
         modify_file['Dose'] = pd.to_numeric(modify_file['Dose'], errors='coerce')
-        # 删除包含空值的行
+        # Delete rows containing null values
         modify_file = modify_file.dropna()
         # Save the filtered data to a CSV file
         modify_file.to_csv(output_file, index=False)
@@ -39,5 +39,6 @@ def filter_and_save_data(ids_path, data_file, output_file):
 ids_path = r'E:\Code_test\pneumonia\Code\dataset\for_radiomics\Dose_map_radiomics\Dose_map_preprocessed'
 data_file =r'E:\Code_test\pneumonia\clinical_feature_pneumonia.csv'
 output_file = r'E:\Code_test\pneumonia\Code\dataset\select_clinical.csv'
+
 
 filter_and_save_data(ids_path, data_file, output_file)
