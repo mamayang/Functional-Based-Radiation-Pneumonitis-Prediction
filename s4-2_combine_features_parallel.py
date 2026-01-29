@@ -25,27 +25,27 @@ def feature_selection_fun(train_data = None, n_iter=100, sample_ratio=0.7):
     else:
         features = train_data.iloc[:, :-1]
 
-        # 确定保留特征的最小数量
+        # Determine the minimum number of features to retain
         selector = VarianceThreshold(threshold=0)
         selector.fit(features)
 
-        # 获取方差为0的特征掩码
+        # Get mask of features with zero variance
         constant_mask = selector.variances_ == 0
 
-        # 获取特征名
+        # Get feature names
         constant_features = features.columns[constant_mask]
 
-        # 1. 获取非常量特征的掩码
-        non_constant_mask = ~constant_mask  # 取反，得到非常量特征的掩码
+        # 1. Get mask of non-constant features
+        non_constant_mask = ~constant_mask  # Invert to obtain non-constant feature mask
 
-        # 2. 获取非常量特征的名称
+        # 2. Get names of non-constant features
         feature_names = features.columns[non_constant_mask].tolist()
 
-        # 3. 更新特征数据
+        # 3. Update feature data
         features = features[feature_names]
-        print("方差为0的特征名:")
+        print("Features with zero variance:")
         print(constant_features)
-        print("\n总共有{}个方差为0的特征".format(len(constant_features)))
+        print("\nTotal of {} features with zero variance".format(len(constant_features)))
 
 
         target = train_data.iloc[:, -1]
@@ -55,9 +55,9 @@ def feature_selection_fun(train_data = None, n_iter=100, sample_ratio=0.7):
                            'Fscore': [],
                            'MI': []}
         
-        # 100次随机下采样（每次70%的患者）
+        # 100 times random down-sampling (70% of patients each time)
         for i in range(n_iter):
-            # 随机采样70%的患者
+            # Randomly sample 70% of patients
             n_samples = int(len(train_data) * sample_ratio)
             sampled_indices = train_data.sample(n=n_samples, random_state=None).index
             sampled_features = features.loc[sampled_indices]
@@ -66,31 +66,30 @@ def feature_selection_fun(train_data = None, n_iter=100, sample_ratio=0.7):
             print(f"Iteration {i + 1}: sampled {len(sampled_indices)} patients (70% of total)")
             print("Feature Selection...", i)
             
-            # 在ANOVA之前移除常数特征（方差为0的特征）
+            # Remove constant features (zero variance) before ANOVA
             variance_selector = VarianceThreshold(threshold=0)
             variance_selector.fit(sampled_features)
             non_constant_mask = variance_selector.get_support()
             
-            # 识别常数特征
+            # Identify constant features
             constant_features = sampled_features.columns[~non_constant_mask].tolist()
             if len(constant_features) > 0:
                 print(f"  Constant features removed before ANOVA ({len(constant_features)}): {constant_features[:10]}{'...' if len(constant_features) > 10 else ''}")
             
-            # 只使用非常数特征
+            # Use only non-constant features
             sampled_features = sampled_features.loc[:, non_constant_mask]
             
-            # Step 1: ANOVA筛选 (ANOVA > 0, 即保留p值<alpha的显著特征)
-            # 使用f_classif进行ANOVA F-test
+           
             f_values, p_values = f_classif(sampled_features, sampled_target)
             
-            # 保留p值<alpha的显著特征（ANOVA > 0 理解为有统计意义，即p < alpha）
+            # Keep significant features with p < alpha (ANOVA > 0 understood as statistically significant, i.e., p < alpha)
             anova_features_mask = p_values < opt.alpha
             anova_selected_features = sampled_features.columns[anova_features_mask].tolist()
             anova_features_df = sampled_features[anova_selected_features]
             
             print(f"  After ANOVA: {len(anova_selected_features)} features (p < {opt.alpha})")
             
-            # 检查ANOVA筛选后是否还有特征
+            # Check if there are still features after ANOVA filtering
             if len(anova_selected_features) == 0:
                 print(f"  Warning: No features passed ANOVA filter (p < {opt.alpha}), skipping this iteration")
                 # 添加空列表以保持数据结构一致
@@ -99,7 +98,7 @@ def feature_selection_fun(train_data = None, n_iter=100, sample_ratio=0.7):
                 dataset_dict_fs['MI'].append([])
                 continue
             
-            # Step 2: 监督特征选择（Lasso/MI/F-score）在ANOVA筛选后的特征上进行
+            # Step 2: Supervised feature selection (Lasso/MI/F-score) on ANOVA-filtered features
             selected_lasso_features = LassoSelection(anova_features_df, sampled_target, opt)
             dataset_dict_fs['LASSO'].append(selected_lasso_features)
             
@@ -110,16 +109,6 @@ def feature_selection_fun(train_data = None, n_iter=100, sample_ratio=0.7):
             dataset_dict_fs['MI'].append(selected_MI_features)
 
 
-            # # ANOVA F-test
-            # f_values, p_values = f_classif(X_train, y_train)
-            # significant_features = [features.columns[i] for i in range(len(p_values)) if p_values[i] < alpha]
-
-            # Pearson correlation
-            # low_correlation_features = []
-            # for feature in significant_features:
-            #     if all(np.abs(pearsonr(X_train[feature], X_train[other_feature])[0]) < corr_threshold for other_feature in
-            #            significant_features if other_feature != feature):
-            #         low_correlation_features.append(feature)
 
 
             # 更新选定特征集
@@ -137,7 +126,7 @@ def feature_selection_fun(train_data = None, n_iter=100, sample_ratio=0.7):
         for i in range(len(lasso_sorted_features)):
             for j in range(i + 1, len(lasso_sorted_features)):
                 if abs(lasso_correlation_matrix.iloc[i, j]) > opt.corr_threshold:
-                    # 选择要删除的特征（这里简单地选择了列表中后出现的特征）
+                    # Choose feature to drop (here simply the later one in the list)
                     lasso_to_drop.add(lasso_sorted_features[j])
         lasso_reduced = lasso_selected_features.drop(columns=lasso_to_drop)
 
@@ -155,7 +144,7 @@ def feature_selection_fun(train_data = None, n_iter=100, sample_ratio=0.7):
         for i in range(len(fscore_sorted_features)):
             for j in range(i + 1, len(fscore_sorted_features)):
                 if abs(fscore_correlation_matrix.iloc[i, j]) > opt.corr_threshold:
-                    # 选择要删除的特征（这里简单地选择了列表中后出现的特征）
+                    # Choose feature to drop (here simply the later one in the list)
                     fscore_to_drop.add(fscore_sorted_features[j])
         fscore_reduced = fscore_selected_features.drop(columns=fscore_to_drop)
         
@@ -173,7 +162,7 @@ def feature_selection_fun(train_data = None, n_iter=100, sample_ratio=0.7):
         for i in range(len(mi_sorted_features)):
             for j in range(i + 1, len(mi_sorted_features)):
                 if abs(mi_correlation_matrix.iloc[i, j]) > opt.corr_threshold:
-                    # 选择要删除的特征（这里简单地选择了列表中后出现的特征）
+                    # Choose feature to drop (here simply the later one in the list)
                     mi_to_drop.add(mi_sorted_features[j])
         mi_reduced = mi_selected_features.drop(columns=mi_to_drop)
 
@@ -183,10 +172,7 @@ def feature_selection_fun(train_data = None, n_iter=100, sample_ratio=0.7):
 
 modalitylist = ["LFL-D","LFL-RD","PTV-HQ-RD","GTV-RD",
                 'WL-D','WL-R','WL-RD','HFL-R', "HFL-D"]
-# modalitylist = ['PTV-HFL-RD',"HFL-RD","PTV-RD", "LFL-R",'PTV-HV-RD',"LFL-D","LFL-RD","PTV-HQ-RD","GTV-RD",
-                # 'WL-D','WL-R','WL-RD','HFL-R', "HFL-D"]
-# modalitylist = ["HP-RD","HV-RD","GTV-RD",'Peri-GTV-RD']
-# modalitylist = ['Peri-HV-RD','Peri-HP-RD']
+
 n_splits = 10
 
 for modality in modalitylist:
@@ -225,10 +211,10 @@ for modality in modalitylist:
             print(f"Error occurred while converting column '{column}': {e}")
     data_df = data_df.astype(dtype_dict)
 
-    # 提取label和ID
+    # Extract label and ID
     labels = data[label_col].values
     ids = data['ID'].values if 'ID' in data.columns else np.arange(len(data_df))
-    # 10折StratifiedKFold
+    # 10-fold StratifiedKFold
     skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
     test_dir = os.path.join('./dataset/Dataset_split/PMB', 'Parallel', f'{n_splits}-fold', opt.modality,
                             f'f_ratio_{opt.feature_ratio}_cor_{opt.corr_threshold}')
@@ -241,16 +227,16 @@ for modality in modalitylist:
         train_label = labels[train_idx]
         test_label = labels[test_idx]
 
-        train_df[label_col] = train_label  # 保证标签列存在
+        train_df[label_col] = train_label  # Ensure the label column exists
 
-        # 特征选择
+        # Feature selection
         lasso_selected_features, fscore_selected_features, mi_selected_features = feature_selection_fun(
             train_data=train_df)
-        print(f"LASSO特征数: {len(lasso_selected_features)}")
-        print(f"Fscore特征数: {len(fscore_selected_features)}")
-        print(f"MI特征数: {len(mi_selected_features)}")
-        # 保存每折test集的ID/文件名到txt
-        # 假设你有'ID'或'filename'列，否则保存index
+        print(f"Number of LASSO features: {len(lasso_selected_features)}")
+        print(f"Number of Fscore features: {len(fscore_selected_features)}")
+        print(f"Number of MI features: {len(mi_selected_features)}")
+        # Save IDs/filenames of the train set of each fold to txt
+        # Assume you have 'ID' or 'filename' column, otherwise save index
         if 'ID' in data.columns:
             train_ids = data.iloc[train_idx]['ID'].tolist()
         elif 'filename' in data.columns:
@@ -261,9 +247,9 @@ for modality in modalitylist:
         with open(train_txt_path, 'w') as f:
             for tid in train_ids:
                 f.write(str(tid) + '\n')
-        print(f'Fold {fold + 1} train文件已保存: {train_txt_path}')
+        print(f'Fold {fold + 1} train file saved: {train_txt_path}')
 
-        # 保存每折test集的ID/文件名到txt
+        # Save IDs/filenames of the test set of each fold to txt
         if 'ID' in data.columns:
             test_ids = data.iloc[test_idx]['ID'].tolist()
         elif 'filename' in data.columns:
@@ -274,9 +260,9 @@ for modality in modalitylist:
         with open(test_txt_path, 'w') as f:
             for tid in test_ids:
                 f.write(str(tid) + '\n')
-        print(f'Fold {fold + 1} test文件已保存: {test_txt_path}')
+        print(f'Fold {fold + 1} test file saved: {test_txt_path}')
 
-        # 保存特征选择结果
+        # Save feature selection results
         lasso_to_select = (['ID'] if 'ID' in train_df.columns else []) + lasso_selected_features + additional_columns
         fscore_to_select = (['ID'] if 'ID' in train_df.columns else []) + fscore_selected_features + additional_columns
         mi_to_select = (['ID'] if 'ID' in train_df.columns else []) + mi_selected_features + additional_columns
@@ -287,4 +273,4 @@ for modality in modalitylist:
             os.path.join(test_dir, f'fold_{fold + 1}_selected_fscore_features_with_info.csv'), index=False)
         pd.DataFrame(mi_to_select).to_csv(os.path.join(test_dir, f'fold_{fold + 1}_selected_mi_features_with_info.csv'),
                                           index=False)
-    print(f"所有fold的test文件已保存完毕到：{test_dir}")
+    print(f"All test files of all folds have been saved to: {test_dir}")
