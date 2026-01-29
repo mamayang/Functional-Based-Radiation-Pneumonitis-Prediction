@@ -27,6 +27,7 @@ def filter_and_save_data(ids_path, data_file, output_file):
         modify_file = final_data.rename(columns=columns_needed, inplace=False)
         modify_file['Grade'] = (modify_file['Grade'] >= 2).astype(int)
         modify_file['Dose'] = pd.to_numeric(modify_file['Dose'], errors='coerce')
+        
         # Delete rows containing null values
         modify_file = modify_file.dropna()
         # Save the filtered data to a CSV file
@@ -42,3 +43,4 @@ output_file = r'E:\Code_test\pneumonia\Code\dataset\select_clinical.csv'
 
 
 filter_and_save_data(ids_path, data_file, output_file)
+
