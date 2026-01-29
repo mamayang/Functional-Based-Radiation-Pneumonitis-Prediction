@@ -30,11 +30,11 @@ from sklearn.metrics import roc_auc_score, accuracy_score, f1_score, precision_s
 # noinspection PyShadowingNames
 def model_selection(X_train, y_train, X_test, y_test,test_data, modality_name,
                    target_name=None, reduction_method=None, need_predict_score=False):
-    # 函数参数创建新的局部作用域，不会隐藏外部变量
+    # Function arguments create a new local scope and will not shadow outer variables
     # pylint: disable=redefined-outer-name
     
     def check_overfitting(train_accuracy, val_accuracy, model_name):
-        """检查并警告可能的过拟合：train accuracy高但validation accuracy低"""
+        """Check and warn for potential overfitting: high train accuracy but low validation accuracy."""
         gap = train_accuracy - val_accuracy
         if train_accuracy >= 0.95 and gap > 0.15:
             print(f"  ⚠️  Warning: Possible overfitting! Train: {train_accuracy:.4f}, CV: {val_accuracy:.4f}, Gap: {gap:.4f}")
@@ -63,7 +63,7 @@ def model_selection(X_train, y_train, X_test, y_test,test_data, modality_name,
         MLPClassifier(alpha=1, max_iter=1000),
         AdaBoostClassifier(),
         GaussianNB(),
-        QuadraticDiscriminantAnalysis(reg_param=0.1),  # 添加正则化处理共线性
+        QuadraticDiscriminantAnalysis(reg_param=0.1),  # Add regularization to handle collinearity
         LogisticRegression(multi_class="multinomial", n_jobs=4, max_iter=10000),
         GradientBoostingClassifier(),
         xgb.XGBClassifier(tree_method="hist", enable_categorical=True, eval_metric='mlogloss'),
@@ -81,18 +81,18 @@ def model_selection(X_train, y_train, X_test, y_test,test_data, modality_name,
 
     for name, model in zip(names, classifiers):
         print(f"Running: {name}")
-        # 针对KNN、DT、RF，做参数调优
+        # Perform hyperparameter tuning for KNN, Decision Tree, and Random Forest
         if name == "Nearest Neighbors":
-            # 对于小数据集，k值范围适当缩小
+            # For small datasets, use a smaller range of k values
             k_range = range(3, 12)  # k: 3-11
             best_score = -1
             best_k = 3
-            # 使用交叉验证进行参数调优
+            # Use cross-validation for hyperparameter tuning
             n_splits = 10
             cv = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
             for k in k_range:
                 knn = KNeighborsClassifier(n_neighbors=k)
-                # 使用交叉验证评估
+              
                 scores = cross_val_score(knn, X_train, y_train, cv=cv, scoring='accuracy', n_jobs=-1)
                 score = scores.mean()
                 if score > best_score:
@@ -100,11 +100,11 @@ def model_selection(X_train, y_train, X_test, y_test,test_data, modality_name,
                     best_k = k
             best_model = KNeighborsClassifier(n_neighbors=best_k)
             best_model.fit(X_train, y_train)
-            # 使用交叉验证评估最终模型
+            # Evaluate the final model using cross-validation
             cv_scores = cross_val_score(best_model, X_train, y_train, cv=cv, scoring='accuracy', n_jobs=-1)
             val_accuracy = cv_scores.mean()
             val_std = cv_scores.std()
-            # 计算train accuracy
+            # Compute train accuracy
             y_train_pred = best_model.predict(X_train)
             train_accuracy = accuracy_score(y_train, y_train_pred)
             print(f"Train Accuracy ({name}): {train_accuracy:.4f}")
@@ -140,17 +140,17 @@ def model_selection(X_train, y_train, X_test, y_test,test_data, modality_name,
             continue
 
         if name == "Decision Tree":
-            # 对于小数据集，限制树深度避免过拟合
+            # For small datasets, limit tree depth to avoid overfitting
             k_range = range(3, 9)  # max_depth: 3-8
             best_score = -1
             best_k = 3
-            # 使用交叉验证进行参数调优
+            # Use cross-validation for hyperparameter tuning
             n_splits = 10
             cv = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
             for k in k_range:
-                # 添加防止过拟合的参数：min_samples_split, min_samples_leaf
+                # Add parameters to prevent overfitting: min_samples_split, min_samples_leaf
                 dt = DecisionTreeClassifier(max_depth=k, min_samples_split=5, min_samples_leaf=2, random_state=42)
-                # 使用交叉验证评估
+                # Evaluate with cross-validation
                 scores = cross_val_score(dt, X_train, y_train, cv=cv, scoring='accuracy', n_jobs=-1)
                 score = scores.mean()
                 if score > best_score:
@@ -158,11 +158,11 @@ def model_selection(X_train, y_train, X_test, y_test,test_data, modality_name,
                     best_k = k
             best_model = DecisionTreeClassifier(max_depth=best_k, min_samples_split=5, min_samples_leaf=2, random_state=42)
             best_model.fit(X_train, y_train)
-            # 使用交叉验证评估最终模型
+            # Evaluate the final model using cross-validation
             cv_scores = cross_val_score(best_model, X_train, y_train, cv=cv, scoring='accuracy', n_jobs=-1)
             val_accuracy = cv_scores.mean()
             val_std = cv_scores.std()
-            # 计算train accuracy
+            # Compute train accuracy
             y_train_pred = best_model.predict(X_train)
             train_accuracy = accuracy_score(y_train, y_train_pred)
             print(f"Train Accuracy ({name}): {train_accuracy:.4f}")
@@ -197,18 +197,18 @@ def model_selection(X_train, y_train, X_test, y_test,test_data, modality_name,
             continue
 
         if name == "Random Forest":
-            # 对于小数据集，使用较少的树数量
+            # For small datasets, use a smaller number of trees
             n_range = [10, 20, 30, 50]
             best_score = -1
             best_n = 10
-            # 使用交叉验证进行参数调优
+            # Use cross-validation for hyperparameter tuning
             n_splits = 10
             cv = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
             for n in n_range:
-                # 添加防止过拟合的参数：限制深度、min_samples_split、max_features
+                # Add parameters to prevent overfitting: limit depth, min_samples_split, max_features
                 rf = RandomForestClassifier(n_estimators=n, max_depth=5, min_samples_split=5, 
                                           min_samples_leaf=2, max_features='sqrt', n_jobs=4, random_state=42)
-                # 使用交叉验证评估
+                # Evaluate with cross-validation
                 scores = cross_val_score(rf, X_train, y_train, cv=cv, scoring='accuracy', n_jobs=-1)
                 score = scores.mean()
                 if score > best_score:
@@ -217,11 +217,11 @@ def model_selection(X_train, y_train, X_test, y_test,test_data, modality_name,
             best_model = RandomForestClassifier(n_estimators=best_n, max_depth=5, min_samples_split=5,
                                                min_samples_leaf=2, max_features='sqrt', n_jobs=4, random_state=42)
             best_model.fit(X_train, y_train)
-            # 使用交叉验证评估最终模型
+            # Evaluate the final model using cross-validation
             cv_scores = cross_val_score(best_model, X_train, y_train, cv=cv, scoring='accuracy', n_jobs=-1)
             val_accuracy = cv_scores.mean()
             val_std = cv_scores.std()
-            # 计算train accuracy
+            # Compute train accuracy
             y_train_pred = best_model.predict(X_train)
             train_accuracy = accuracy_score(y_train, y_train_pred)
             print(f"Train Accuracy ({name}): {train_accuracy:.4f}")
@@ -254,25 +254,25 @@ def model_selection(X_train, y_train, X_test, y_test,test_data, modality_name,
                 predictions_all.append(pred_df)
             continue
 
-        # 其它模型，使用验证集进行参数调优
+        # For other models, use validation via cross-validation for hyperparameter tuning
         try:
-            # 需要调参的模型列表
+            # Models that require hyperparameter tuning
             models_need_tuning = ["Logistic Regression", "XGBoost", "lightGBM", "CatBoost", "GBM", "AdaBoost", "Neural Net"]
             
-            # 使用交叉验证进行参数调优和评估
+            # Use cross-validation for hyperparameter tuning and evaluation
             n_splits = 10
             cv = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
             
-            # 根据模型类型进行参数调优
+            # Tune hyperparameters according to model type
             if name == "Logistic Regression":
-                # Logistic Regression 调参：C值（使用更强的正则化防止过拟合）
-                C_range = [0.001, 0.01, 0.1, 1, 10]  # 移除100，使用更强的正则化
+                # Logistic Regression tuning: C (use stronger regularization to prevent overfitting)
+                C_range = [0.001, 0.01, 0.1, 1, 10]  # Remove very large C to enforce stronger regularization
                 best_score = -1
                 best_C = 1
                 for C in C_range:
                     lr = LogisticRegression(C=C, multi_class="multinomial", n_jobs=4, max_iter=10000, 
                                           penalty='l2', random_state=42)
-                    # 使用交叉验证评估
+                    # Evaluate with cross-validation
                     scores = cross_val_score(lr, X_train, y_train, cv=cv, scoring='accuracy', n_jobs=-1)
                     score = scores.mean()
                     if score > best_score:
@@ -281,7 +281,7 @@ def model_selection(X_train, y_train, X_test, y_test,test_data, modality_name,
                 best_model = LogisticRegression(C=best_C, multi_class="multinomial", n_jobs=4, max_iter=10000,
                                                penalty='l2', random_state=42)
                 best_model.fit(X_train, y_train)
-                # 使用交叉验证评估最终模型
+                # Evaluate the final model using cross-validation
                 cv_scores = cross_val_score(best_model, X_train, y_train, cv=cv, scoring='accuracy', n_jobs=-1)
                 val_accuracy = cv_scores.mean()
                 val_std = cv_scores.std()
@@ -294,17 +294,17 @@ def model_selection(X_train, y_train, X_test, y_test,test_data, modality_name,
                 check_overfitting(train_accuracy, val_accuracy, name)
             
             elif name == "XGBoost":
-                # XGBoost 调参：n_estimators (小数据集使用较小的值)
+                # XGBoost tuning: n_estimators (use smaller values for small datasets)
                 n_range = [10, 20, 30, 50]
                 best_score = -1
                 best_n = 20
                 for n in n_range:
-                    # 添加防止过拟合的参数：限制深度、正则化
+                    # Add parameters to prevent overfitting: limit depth, regularization
                     xgb_model = xgb.XGBClassifier(n_estimators=n, max_depth=3, learning_rate=0.1,
                                                  reg_alpha=0.1, reg_lambda=1.0, min_child_weight=3,
                                                  tree_method="hist", enable_categorical=True,
                                                  eval_metric='mlogloss', random_state=42)
-                    # 使用交叉验证评估
+                    # Evaluate with cross-validation
                     scores = cross_val_score(xgb_model, X_train, y_train, cv=cv, scoring='accuracy', n_jobs=-1)
                     score = scores.mean()
                     if score > best_score:
@@ -315,7 +315,7 @@ def model_selection(X_train, y_train, X_test, y_test,test_data, modality_name,
                                                tree_method="hist", enable_categorical=True,
                                                eval_metric='mlogloss', random_state=42)
                 best_model.fit(X_train, y_train)
-                # 使用交叉验证评估最终模型
+                # Evaluate the final model using cross-validation
                 cv_scores = cross_val_score(best_model, X_train, y_train, cv=cv, scoring='accuracy', n_jobs=-1)
                 val_accuracy = cv_scores.mean()
                 val_std = cv_scores.std()
@@ -328,16 +328,16 @@ def model_selection(X_train, y_train, X_test, y_test,test_data, modality_name,
                 check_overfitting(train_accuracy, val_accuracy, name)
             
             elif name == "lightGBM":
-                # LightGBM 调参：n_estimators (小数据集使用较小的值)
+                # LightGBM tuning: n_estimators (use smaller values for small datasets)
                 n_range = [10, 20, 30, 50]
                 best_score = -1
                 best_n = 20
                 for n in n_range:
-                    # 添加防止过拟合的参数：限制深度、正则化
+                    # Add parameters to prevent overfitting: limit depth, regularization
                     lgb_model = lgb.LGBMClassifier(n_estimators=n, max_depth=3, learning_rate=0.1,
                                                   reg_alpha=0.1, reg_lambda=1.0, min_child_samples=5,
                                                   verbosity=-1, random_state=42)
-                    # 使用交叉验证评估
+                    # Evaluate with cross-validation
                     scores = cross_val_score(lgb_model, X_train, y_train, cv=cv, scoring='accuracy', n_jobs=-1)
                     score = scores.mean()
                     if score > best_score:
@@ -347,11 +347,11 @@ def model_selection(X_train, y_train, X_test, y_test,test_data, modality_name,
                                                reg_alpha=0.1, reg_lambda=1.0, min_child_samples=5,
                                                verbosity=-1, random_state=42)
                 best_model.fit(X_train, y_train)
-                # 使用交叉验证评估最终模型
+                # Evaluate the final model using cross-validation
                 cv_scores = cross_val_score(best_model, X_train, y_train, cv=cv, scoring='accuracy', n_jobs=-1)
                 val_accuracy = cv_scores.mean()
                 val_std = cv_scores.std()
-                # 计算train accuracy
+             
                 y_train_pred = best_model.predict(X_train)
                 train_accuracy = accuracy_score(y_train, y_train_pred)
                 print(f"Best n_estimators for {name}: {best_n}")
@@ -360,15 +360,15 @@ def model_selection(X_train, y_train, X_test, y_test,test_data, modality_name,
                 check_overfitting(train_accuracy, val_accuracy, name)
             
             elif name == "CatBoost":
-                # CatBoost 调参：iterations (小数据集使用较小的值)
+                # CatBoost tuning: iterations (use smaller values for small datasets)
                 n_range = [10, 20, 30, 50]
                 best_score = -1
                 best_n = 20
                 for n in n_range:
-                    # 添加防止过拟合的参数：限制深度、正则化、学习率
+                    # Add parameters to prevent overfitting: limit depth, regularization, learning rate
                     cb_model = cb.CatBoostClassifier(iterations=n, max_depth=3, learning_rate=0.1,
                                                     l2_leaf_reg=3, min_data_in_leaf=5, silent=True, random_state=42)
-                    # 使用交叉验证评估
+                    # Evaluate with cross-validation
                     scores = cross_val_score(cb_model, X_train, y_train, cv=cv, scoring='accuracy', n_jobs=-1)
                     score = scores.mean()
                     if score > best_score:
@@ -377,7 +377,7 @@ def model_selection(X_train, y_train, X_test, y_test,test_data, modality_name,
                 best_model = cb.CatBoostClassifier(iterations=best_n, max_depth=3, learning_rate=0.1,
                                                   l2_leaf_reg=3, min_data_in_leaf=5, silent=True, random_state=42)
                 best_model.fit(X_train, y_train)
-                # 使用交叉验证评估最终模型
+                # Evaluate the final model using cross-validation
                 cv_scores = cross_val_score(best_model, X_train, y_train, cv=cv, scoring='accuracy', n_jobs=-1)
                 val_accuracy = cv_scores.mean()
                 val_std = cv_scores.std()
@@ -390,15 +390,15 @@ def model_selection(X_train, y_train, X_test, y_test,test_data, modality_name,
                 check_overfitting(train_accuracy, val_accuracy, name)
             
             elif name == "GBM":
-                # Gradient Boosting 调参：n_estimators (小数据集使用较小的值)
+                # Gradient Boosting tuning: n_estimators (use smaller values for small datasets)
                 n_range = [10, 20, 30, 50]
                 best_score = -1
                 best_n = 20
                 for n in n_range:
-                    # 添加防止过拟合的参数：限制深度、学习率、min_samples_split
+                    # Add parameters to prevent overfitting: limit depth, learning rate, min_samples_split
                     gbm_model = GradientBoostingClassifier(n_estimators=n, max_depth=3, learning_rate=0.1,
                                                            min_samples_split=5, min_samples_leaf=2, random_state=42)
-                    # 使用交叉验证评估
+                    # Evaluate with cross-validation
                     scores = cross_val_score(gbm_model, X_train, y_train, cv=cv, scoring='accuracy', n_jobs=-1)
                     score = scores.mean()
                     if score > best_score:
@@ -407,7 +407,7 @@ def model_selection(X_train, y_train, X_test, y_test,test_data, modality_name,
                 best_model = GradientBoostingClassifier(n_estimators=best_n, max_depth=3, learning_rate=0.1,
                                                        min_samples_split=5, min_samples_leaf=2, random_state=42)
                 best_model.fit(X_train, y_train)
-                # 使用交叉验证评估最终模型
+                # Evaluate the final model using cross-validation
                 cv_scores = cross_val_score(best_model, X_train, y_train, cv=cv, scoring='accuracy', n_jobs=-1)
                 val_accuracy = cv_scores.mean()
                 val_std = cv_scores.std()
@@ -420,14 +420,14 @@ def model_selection(X_train, y_train, X_test, y_test,test_data, modality_name,
                 check_overfitting(train_accuracy, val_accuracy, name)
             
             elif name == "AdaBoost":
-                # AdaBoost 调参：n_estimators (小数据集使用较小的值)
+                # AdaBoost tuning: n_estimators (use smaller values for small datasets)
                 n_range = [10, 20, 30, 50]
                 best_score = -1
                 best_n = 10
                 for n in n_range:
-                    # 添加防止过拟合的参数：降低学习率
+                    # Add parameter to prevent overfitting: lower learning rate
                     ab_model = AdaBoostClassifier(n_estimators=n, learning_rate=0.5, random_state=42)
-                    # 使用交叉验证评估
+                    # Evaluate with cross-validation
                     scores = cross_val_score(ab_model, X_train, y_train, cv=cv, scoring='accuracy', n_jobs=-1)
                     score = scores.mean()
                     if score > best_score:
@@ -435,7 +435,7 @@ def model_selection(X_train, y_train, X_test, y_test,test_data, modality_name,
                         best_n = n
                 best_model = AdaBoostClassifier(n_estimators=best_n, learning_rate=0.5, random_state=42)
                 best_model.fit(X_train, y_train)
-                # 使用交叉验证评估最终模型
+                # Evaluate the final model using cross-validation
                 cv_scores = cross_val_score(best_model, X_train, y_train, cv=cv, scoring='accuracy', n_jobs=-1)
                 val_accuracy = cv_scores.mean()
                 val_std = cv_scores.std()
@@ -448,15 +448,15 @@ def model_selection(X_train, y_train, X_test, y_test,test_data, modality_name,
                 check_overfitting(train_accuracy, val_accuracy, name)
             
             elif name == "Neural Net":
-                # Neural Net 调参：alpha值（L2正则化，防止过拟合）
-                alpha_range = [0.001, 0.01, 0.1, 1, 10]  # 增加更强的正则化选项
+                # Neural Net tuning: alpha (L2 regularization to prevent overfitting)
+                alpha_range = [0.001, 0.01, 0.1, 1, 10]  # Include options for stronger regularization
                 best_score = -1
                 best_alpha = 1
                 for alpha in alpha_range:
-                    # 添加防止过拟合的参数：增加hidden_layer_sizes限制，early_stopping
+                    # Add parameters to prevent overfitting: constrain hidden_layer_sizes, enable early_stopping
                     nn_model = MLPClassifier(alpha=alpha, hidden_layer_sizes=(50,), max_iter=1000,
                                             early_stopping=True, validation_fraction=0.1, random_state=42)
-                    # 使用交叉验证评估
+                    # Evaluate with cross-validation
                     scores = cross_val_score(nn_model, X_train, y_train, cv=cv, scoring='accuracy', n_jobs=-1)
                     score = scores.mean()
                     if score > best_score:
@@ -465,7 +465,7 @@ def model_selection(X_train, y_train, X_test, y_test,test_data, modality_name,
                 best_model = MLPClassifier(alpha=best_alpha, hidden_layer_sizes=(50,), max_iter=1000,
                                           early_stopping=True, validation_fraction=0.1, random_state=42)
                 best_model.fit(X_train, y_train)
-                # 使用交叉验证评估最终模型
+                # Evaluate the final model using cross-validation
                 cv_scores = cross_val_score(best_model, X_train, y_train, cv=cv, scoring='accuracy', n_jobs=-1)
                 val_accuracy = cv_scores.mean()
                 val_std = cv_scores.std()
@@ -478,21 +478,21 @@ def model_selection(X_train, y_train, X_test, y_test,test_data, modality_name,
                 check_overfitting(train_accuracy, val_accuracy, name)
             
             else:
-                # 对于不需要调参的模型（Gaussian Process, Naive Bayes, QDA），使用原始模型
+                # For models that do not require tuning (Gaussian Process, Naive Bayes, QDA), use default models
                 if name == "QDA":
-                    # QDA对共线性敏感，使用正则化参数
+                    # QDA is sensitive to collinearity, so use regularization parameter
                     best_model = QuadraticDiscriminantAnalysis(reg_param=0.1)
                 else:
                     best_model = model
-                # 使用整个训练集训练模型
+                # Train the model on the full training set
                 best_model.fit(X_train, y_train)
-                # 使用交叉验证评估
+                # Evaluate with cross-validation
                 n_splits = 10
                 cv = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
                 cv_scores = cross_val_score(best_model, X_train, y_train, cv=cv, scoring='accuracy', n_jobs=-1)
                 val_accuracy = cv_scores.mean()
                 val_std = cv_scores.std()
-                # 计算train accuracy
+                # Compute train accuracy
                 y_train_pred = best_model.predict(X_train)
                 train_accuracy = accuracy_score(y_train, y_train_pred)
                 print(f"Train Accuracy ({name}): {train_accuracy:.4f}")
@@ -531,31 +531,18 @@ def model_selection(X_train, y_train, X_test, y_test,test_data, modality_name,
     predictions_df = pd.concat(predictions_all, ignore_index=True) if need_predict_score else pd.DataFrame()
     return performance_df, predictions_df
 
-# 从 CSV 文件中读取数据
+# Read ID list from txt file
 def read_id_list(txt_path):
     with open(txt_path) as f:
         return [line.strip() for line in f if line.strip()]
 
 if __name__ == '__main__':
     opt = parse_option(print_option=True)
-    # modalitylist = ["PTV-HFL-RD"]
-    # modalitylist = ['PTV-HV-RD']
     need_train = True
     modalitylist = ['PTV-HFL-RD',"HFL-RD","PTV-RD", "LFL-R",'PTV-HV-RD',"LFL-D","LFL-RD","PTV-HQ-RD","GTV-RD",
                'WL-D','WL-R','WL-RD','HFL-R', "HFL-D"]
-    # 'Peri-GTV_Dose_Ventilation','Dose_GTV','Dose_Peri-GTV']
-    # modalitylist = ['Peri-HV-RD','Peri-HP-RD']
-    # modalitylist = ['ALL']
     for i in modalitylist:
         opt.modality = i
-        # modality = 'dose'
-        # modality =opt.modality + '+clinical'
-        # modality = 'All'
-        # modality = 'Peri-GTV+clinical'
-        # sampler_choice = ['smote', 'mix', 'none']
-        # RFE_choice = ['RFE', 'RFECV']
-        # Corr_m = ['pearson', 'spearman']
-        # Corr_threshold = [0.6, 0.7, 0.8]
         possible_filenames = [
             f"{opt.modality}_merged_data_part_1_normalized.csv",
             f"{opt.modality}_merged_data_normalized.csv"
@@ -589,14 +576,14 @@ if __name__ == '__main__':
         ]
 
         if opt.need_clinical_info:
-            # 只排除'Grade'
+            # Exclude only 'Grade'
             exclude_columns = ['Grade']
             outdir = os.path.join('./Parallel/PMB/multiomics_result', opt.modality)
             if not os.path.exists(outdir):
                 os.makedirs(outdir)
         else:
             print('do not need clinical information')
-            # 排除这10列
+            # Exclude these 10 columns
             exclude_columns = columns_to_exclude
             outdir = os.path.join('./Parallel/PMB/multiomics_result', opt.modality)
             if not os.path.exists(outdir):
@@ -614,7 +601,7 @@ if __name__ == '__main__':
             'lasso','fscore','mi'
         ]
 
-        #additional_columns = ['Grade']
+        # additional_columns = ['Grade']
         n_folds = 10
         all_performance = []
         all_oof_preds = []
@@ -646,7 +633,7 @@ if __name__ == '__main__':
                 if len(selected_features) > 30:
                     selected_features = selected_features[:30]
 
-                # 保证train/test特征列一致且不包含被排除列（如ID, Grade等）
+                # Ensure train/test feature columns are consistent and do not include excluded columns (e.g., ID, Grade)
                 columns_to_remove = [col for col in exclude_columns if col in selected_features]
                 use_features = [f for f in selected_features if f not in columns_to_remove]
 
@@ -686,29 +673,29 @@ if __name__ == '__main__':
         all_perf_df = pd.concat(all_performance, ignore_index=True)
         all_perf_df.to_csv(os.path.join(outdir, "all_folds_performance.csv"), encoding='utf-16', sep='\t', index=False)
 
-        # 计算每个method+Classifier的AUC均值和std
+        # Compute mean and std of AUC for each method + Classifier
         summary = all_perf_df.groupby(['method', 'Classifier'])['AUC'].agg(['mean', 'std']).reset_index()
         summary.to_csv(os.path.join(outdir, "summary_performance.csv"), encoding='utf-16', sep='\t', index=False)
 
-        # 选出AUC均值最高的method+classifier
+        # Select the method + classifier combination with the highest mean AUC
         best_row = summary.loc[summary['mean'].idxmax()]
         best_method = best_row['method']
         best_classifier = best_row['Classifier']
-        print('AUC均值最高的组合:', best_method, best_classifier)
+        print('Best combination (highest mean AUC):', best_method, best_classifier)
 
-        # 合并所有fold的预测概率
+        # Merge prediction probabilities from all folds
         all_oof_df = pd.concat(all_oof_preds, ignore_index=True)
         all_oof_df.to_csv(os.path.join(outdir, "all_oof_predictions.csv"), encoding='utf-16', sep='\t', index=False)
 
-        # 只保留最佳method+classifier的oof预测
-        # 保证Classifier列名与performance一致
+        # Keep only the OOF predictions of the best method + classifier
+        # Ensure the Classifier column name is consistent with performance
         best_oof_df = all_oof_df[
             (all_oof_df['method'] == best_method) &
             (all_oof_df['Classifier'] == best_classifier)
             ]
         best_oof_df.to_csv(os.path.join(outdir, "best_oof_predictions.csv"), encoding='utf-16', sep='\t', index=False)
 
-        # 可选：你可以用best_oof_df的prob_1和true_label算最终的整体AUC
+        # Optional: you can compute the final overall AUC using prob_1 and true_label from best_oof_df
         final_auc = roc_auc_score(best_oof_df['true_label'], best_oof_df['prob_1'])
-        print("全数据out-of-fold AUC:", final_auc)
+        print("Overall out-of-fold AUC:", final_auc)
 
