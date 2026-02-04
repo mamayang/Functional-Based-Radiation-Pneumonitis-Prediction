@@ -190,16 +190,24 @@ def process_modality(modality_index: int):
 if __name__ == "__main__":
     print("Choose run mode:")
     print("1. Run all modalities (1–16)")
-    print("2. Run a specific modality (enter an index from 1 to 16)")
+    print("2. Run a specific modality")
+    print("\nModality index map:")
+    for idx, name in modality_map.items():
+        print(f"{idx:2d}: {name}")
+    print("\nNote: The numbers 1–16 above are modality indices. First choose the run mode (1 or 2),")
+    print("then (if you choose 2) enter the specific modality index according to the map above.")
 
-    mode = input("Enter 1 for all, or 2 for a specific modality: ").strip()
+    mode = input("Enter 1 to run ALL modalities, or 2 to run ONE specific modality: ").strip()
 
     if mode == "1":
+        print("\nYou chose to run ALL modalities (1–16).")
         for idx in range(1, 17):
             process_modality(idx)
     elif mode == "2":
+        print("\nYou chose to run ONE specific modality.")
+        print("Please refer to the modality index map above (e.g. 1 = HFL-R).")
         while True:
-            idx_str = input("Enter modality index (1–16): ").strip()
+            idx_str = input("Enter modality index (1–16, e.g. 1 for HFL-R): ").strip()
             try:
                 idx = int(idx_str)
                 if 1 <= idx <= 16:
