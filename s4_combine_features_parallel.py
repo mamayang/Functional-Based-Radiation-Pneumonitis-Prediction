@@ -170,33 +170,55 @@ def feature_selection_fun(train_data = None, n_iter=100, sample_ratio=0.7):
 
     return list(lasso_reduced.columns),list(fscore_reduced.columns),list(mi_reduced.columns)
 
-modalitylist = ["LFL-D","LFL-RD","PTV-HQ-RD","GTV-RD",
-                'WL-D','WL-R','WL-RD','HFL-R', "HFL-D"]
+modality_map = {
+    1: "HFL-R",
+    2: "LFL-R",
+    3: "WL-R",
+    4: "HFL-D",
+    5: "LFL-D",
+    6: "WL-D",
+    7: "HFL-RD",
+    8: "LFL-RD",
+    9: "HP-RD",
+    10: "HV-RD",
+    11: "GTV-RD",
+    12: "PTV-RD",
+    13: "PTV-HV-RD",
+    14: "PTV-HQ-RD",
+    15: "WL-RD",
+    16: "PTV-HFL-RD",
+}
 
 n_splits = 10
 
-for modality in modalitylist:
+
+def run_for_modality(modality: str):
+    """Run cross-validation and feature selection pipeline for a single modality."""
     opt.modality = modality
     possible_filenames = [
         f"{modality}_merged_data_part_1_normalized.csv",
-        f"{modality}_merged_data_normalized.csv"
+        f"{modality}_merged_data_normalized.csv",
     ]
     file_list = []
     for filename in possible_filenames:
-        potential_path = os.path.join('./Parallel/PMB/', filename)
+        potential_path = os.path.join("./Parallel/PMB/", filename)
         if os.path.exists(potential_path):
             file_list.append(potential_path)
             break
 
-    label_col = 'Grade'
+    if not file_list:
+        print(f"[Warning] No input file found for modality: {modality}")
+        return
+
+    label_col = "Grade"
     opt.data_path = file_list
     opt.label_col = label_col
     data = load_data(file_list)
     additional_columns = list(data.columns[-10:-1].values)
     exclude_cols = additional_columns.copy()
-    exclude_cols.insert(0, 'ID')
+    exclude_cols.insert(0, "ID")
     opt.exclude_cols = exclude_cols
-    additional_columns.append('Grade')
+    additional_columns.append("Grade")
     data_df = data.drop(columns=opt.exclude_cols)
     data_df = data_df.drop(data_df.columns[data_df.eq(0).all()], axis=1)
 
@@ -213,15 +235,20 @@ for modality in modalitylist:
 
     # Extract label and ID
     labels = data[label_col].values
-    ids = data['ID'].values if 'ID' in data.columns else np.arange(len(data_df))
+    ids = data["ID"].values if "ID" in data.columns else np.arange(len(data_df))
     # 10-fold StratifiedKFold
     skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
-    test_dir = os.path.join('./dataset/Dataset_split/PMB', 'Parallel', f'{n_splits}-fold', opt.modality,
-                            f'f_ratio_{opt.feature_ratio}_cor_{opt.corr_threshold}')
+    test_dir = os.path.join(
+        "./dataset/Dataset_split/PMB",
+        "Parallel",
+        f"{n_splits}-fold",
+        opt.modality,
+        f"f_ratio_{opt.feature_ratio}_cor_{opt.corr_threshold}",
+    )
     os.makedirs(test_dir, exist_ok=True)
 
     for fold, (train_idx, test_idx) in enumerate(skf.split(data_df, labels)):
-        print(f'===> Fold {fold + 1}/{n_splits}')
+        print(f"===> [{modality}] Fold {fold + 1}/{n_splits}")
         train_df = data_df.iloc[train_idx].copy()
         test_df = data_df.iloc[test_idx].copy()
         train_label = labels[train_idx]
@@ -230,47 +257,127 @@ for modality in modalitylist:
         train_df[label_col] = train_label  # Ensure the label column exists
 
         # Feature selection
-        lasso_selected_features, fscore_selected_features, mi_selected_features = feature_selection_fun(
-            train_data=train_df)
-        print(f"Number of LASSO features: {len(lasso_selected_features)}")
-        print(f"Number of Fscore features: {len(fscore_selected_features)}")
-        print(f"Number of MI features: {len(mi_selected_features)}")
+        (
+            lasso_selected_features,
+            fscore_selected_features,
+            mi_selected_features,
+        ) = feature_selection_fun(train_data=train_df)
+        print(f"[{modality}] Number of LASSO features: {len(lasso_selected_features)}")
+        print(
+            f"[{modality}] Number of Fscore features: {len(fscore_selected_features)}"
+        )
+        print(f"[{modality}] Number of MI features: {len(mi_selected_features)}")
+
         # Save IDs/filenames of the train set of each fold to txt
         # Assume you have 'ID' or 'filename' column, otherwise save index
-        if 'ID' in data.columns:
-            train_ids = data.iloc[train_idx]['ID'].tolist()
-        elif 'filename' in data.columns:
-            train_ids = data.iloc[train_idx]['filename'].tolist()
+        if "ID" in data.columns:
+            train_ids = data.iloc[train_idx]["ID"].tolist()
+        elif "filename" in data.columns:
+            train_ids = data.iloc[train_idx]["filename"].tolist()
         else:
             train_ids = list(train_idx)
-        train_txt_path = os.path.join(test_dir, f'fold_{fold + 1}_train.txt')
-        with open(train_txt_path, 'w') as f:
+        train_txt_path = os.path.join(test_dir, f"fold_{fold + 1}_train.txt")
+        with open(train_txt_path, "w") as f:
             for tid in train_ids:
-                f.write(str(tid) + '\n')
-        print(f'Fold {fold + 1} train file saved: {train_txt_path}')
+                f.write(str(tid) + "\n")
+        print(f"[{modality}] Fold {fold + 1} train file saved: {train_txt_path}")
 
         # Save IDs/filenames of the test set of each fold to txt
-        if 'ID' in data.columns:
-            test_ids = data.iloc[test_idx]['ID'].tolist()
-        elif 'filename' in data.columns:
-            test_ids = data.iloc[test_idx]['filename'].tolist()
+        if "ID" in data.columns:
+            test_ids = data.iloc[test_idx]["ID"].tolist()
+        elif "filename" in data.columns:
+            test_ids = data.iloc[test_idx]["filename"].tolist()
         else:
             test_ids = list(test_idx)
-        test_txt_path = os.path.join(test_dir, f'fold_{fold + 1}_test.txt')
-        with open(test_txt_path, 'w') as f:
+        test_txt_path = os.path.join(test_dir, f"fold_{fold + 1}_test.txt")
+        with open(test_txt_path, "w") as f:
             for tid in test_ids:
-                f.write(str(tid) + '\n')
-        print(f'Fold {fold + 1} test file saved: {test_txt_path}')
+                f.write(str(tid) + "\n")
+        print(f"[{modality}] Fold {fold + 1} test file saved: {test_txt_path}")
 
         # Save feature selection results
-        lasso_to_select = (['ID'] if 'ID' in train_df.columns else []) + lasso_selected_features + additional_columns
-        fscore_to_select = (['ID'] if 'ID' in train_df.columns else []) + fscore_selected_features + additional_columns
-        mi_to_select = (['ID'] if 'ID' in train_df.columns else []) + mi_selected_features + additional_columns
+        lasso_to_select = (
+            (["ID"] if "ID" in train_df.columns else [])
+            + lasso_selected_features
+            + additional_columns
+        )
+        fscore_to_select = (
+            (["ID"] if "ID" in train_df.columns else [])
+            + fscore_selected_features
+            + additional_columns
+        )
+        mi_to_select = (
+            (["ID"] if "ID" in train_df.columns else [])
+            + mi_selected_features
+            + additional_columns
+        )
 
         pd.DataFrame(lasso_to_select).to_csv(
-            os.path.join(test_dir, f'fold_{fold + 1}_selected_lasso_features_with_info.csv'), index=False)
+            os.path.join(
+                test_dir, f"fold_{fold + 1}_selected_lasso_features_with_info.csv"
+            ),
+            index=False,
+        )
         pd.DataFrame(fscore_to_select).to_csv(
-            os.path.join(test_dir, f'fold_{fold + 1}_selected_fscore_features_with_info.csv'), index=False)
-        pd.DataFrame(mi_to_select).to_csv(os.path.join(test_dir, f'fold_{fold + 1}_selected_mi_features_with_info.csv'),
-                                          index=False)
-    print(f"All test files of all folds have been saved to: {test_dir}")
+            os.path.join(
+                test_dir, f"fold_{fold + 1}_selected_fscore_features_with_info.csv"
+            ),
+            index=False,
+        )
+        pd.DataFrame(mi_to_select).to_csv(
+            os.path.join(
+                test_dir, f"fold_{fold + 1}_selected_mi_features_with_info.csv"
+            ),
+            index=False,
+        )
+    print(f"[{modality}] All test files of all folds have been saved to: {test_dir}")
+
+
+if __name__ == "__main__":
+    print("Choose run mode:")
+    print("1. Run all modalities")
+    print("2. Run a specific modality")
+    print("\nModality index map:")
+    for idx, name in modality_map.items():
+        print(f"{idx:2d}: {name}")
+    print(
+        "\nNote: The numbers above are modality indices. First choose the run mode (1 or 2),"
+    )
+    print(
+        "then (if you choose 2) enter the specific modality index according to the map above."
+    )
+
+    mode = input(
+        "Enter 1 to run ALL modalities, or 2 to run ONE specific modality: "
+    ).strip()
+
+    if mode == "1":
+        print("\nYou chose to run ALL modalities.")
+        for idx in sorted(modality_map.keys()):
+            modality = modality_map[idx]
+            print(f"\n=== Running modality {idx}: {modality} ===")
+            run_for_modality(modality)
+    elif mode == "2":
+        print("\nYou chose to run ONE specific modality.")
+        print("Please refer to the modality index map above (e.g. 1 = HFL-R).")
+        while True:
+            idx_str = input(
+                f"Enter modality index (1–{len(modality_map)}, e.g. 1 for HFL-R): "
+            ).strip()
+            try:
+                idx = int(idx_str)
+                if idx in modality_map:
+                    modality = modality_map[idx]
+                    print(f"\n=== Running modality {idx}: {modality} ===")
+                    run_for_modality(modality)
+                    break
+                else:
+                    print(
+                        f"Index must be between 1 and {len(modality_map)}. Please try again."
+                    )
+            except ValueError:
+                print(
+                    f"Invalid input. Please enter an integer between 1 and {len(modality_map)}."
+                )
+    else:
+        print("Invalid choice. Please run the script again and enter 1 or 2.")
