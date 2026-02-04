@@ -92,7 +92,7 @@ def model_selection(X_train, y_train, X_test, y_test,test_data, modality_name,
             cv = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
             for k in k_range:
                 knn = KNeighborsClassifier(n_neighbors=k)
-              
+                # 使用交叉验证评估
                 scores = cross_val_score(knn, X_train, y_train, cv=cv, scoring='accuracy', n_jobs=-1)
                 score = scores.mean()
                 if score > best_score:
@@ -351,7 +351,7 @@ def model_selection(X_train, y_train, X_test, y_test,test_data, modality_name,
                 cv_scores = cross_val_score(best_model, X_train, y_train, cv=cv, scoring='accuracy', n_jobs=-1)
                 val_accuracy = cv_scores.mean()
                 val_std = cv_scores.std()
-             
+                # 计算train accuracy
                 y_train_pred = best_model.predict(X_train)
                 train_accuracy = accuracy_score(y_train, y_train_pred)
                 print(f"Best n_estimators for {name}: {best_n}")
@@ -536,166 +536,290 @@ def read_id_list(txt_path):
     with open(txt_path) as f:
         return [line.strip() for line in f if line.strip()]
 
-if __name__ == '__main__':
+
+modality_map = {
+    1: "HFL-R",
+    2: "LFL-R",
+    3: "WL-R",
+    4: "HFL-D",
+    5: "LFL-D",
+    6: "WL-D",
+    7: "HFL-RD",
+    8: "LFL-RD",
+    9: "HP-RD",
+    10: "HV-RD",
+    11: "GTV-RD",
+    12: "PTV-RD",
+    13: "PTV-HV-RD",
+    14: "PTV-HQ-RD",
+    15: "WL-RD",
+    16: "PTV-HFL-RD",
+}
+
+
+def run_for_modality(opt, modality, need_train, feature_selected_method):
+    """Run classification and evaluation pipeline for a single modality."""
+    opt.modality = modality
+    possible_filenames = [
+        f"{opt.modality}_merged_data_part_1_normalized.csv",
+        f"{opt.modality}_merged_data_normalized.csv",
+    ]
+    file_list = []
+    for filename in possible_filenames:
+        potential_path = os.path.join("./Parallel/PMB/", filename)
+        if os.path.exists(potential_path):
+            file_list.append(potential_path)
+            break
+
+    if not file_list:
+        print(f"[Warning] No input file found for modality: {modality}")
+        return
+
+    opt.data_path = file_list
+    print("Data path : %s" % opt.data_path)
+    data_df = load_data(file_list)
+
+    is_nan = data_df.isna()
+
+    nan_locations = np.where(is_nan)
+
+    for row, col in zip(nan_locations[0], nan_locations[1]):
+        print(f"NaN value found at row {row}, column {col}")
+
+    zero_columns = data_df.columns[(data_df == 0).all()].tolist()
+    if zero_columns:
+        print("Columns with all zeros:", zero_columns)
+        sift_input = data_df.drop(columns=zero_columns)
+
+    columns_to_exclude = [
+        "Age",
+        "Dose",
+        "Gender_1",
+        "Gender_2",
+        "Smoke_1",
+        "Smoke_2",
+        "Treatment_0",
+        "Treatment_1",
+        "Treatment_2",
+        "Grade",
+    ]
+
+    if opt.need_clinical_info:
+        # Exclude only 'Grade'
+        exclude_columns = ["Grade"]
+        outdir = os.path.join("./Parallel/PMB/multiomics_result", opt.modality)
+        if not os.path.exists(outdir):
+            os.makedirs(outdir)
+    else:
+        print("do not need clinical information")
+        # Exclude these 10 columns
+        exclude_columns = columns_to_exclude
+        outdir = os.path.join("./Parallel/PMB/multiomics_result", opt.modality)
+        if not os.path.exists(outdir):
+            os.makedirs(outdir)
+
+    # additional_columns = ['Grade']
+    n_folds = 10
+    all_performance = []
+    all_oof_preds = []
+    for fold in range(1, n_folds + 1):
+        for method in feature_selected_method:
+            selected_train_case_txt_path = os.path.join(
+                "./dataset/Dataset_split/PMB",
+                f"Parallel/{n_folds}-fold",
+                opt.modality,
+                f"f_ratio_{opt.feature_ratio}_cor_{opt.corr_threshold}",
+                f"fold_{fold}_train.txt",
+            )
+            selected_test_case_txt_path = os.path.join(
+                "./dataset/Dataset_split/PMB",
+                f"Parallel/{n_folds}-fold",
+                opt.modality,
+                f"f_ratio_{opt.feature_ratio}_cor_{opt.corr_threshold}",
+                f"fold_{fold}_test.txt",
+            )
+
+            train_id_list = read_id_list(selected_train_case_txt_path)
+            test_id_list = read_id_list(selected_test_case_txt_path)
+
+            train_data = data_df[data_df["ID"].astype(str).isin(train_id_list)].copy()
+            test_data = data_df[data_df["ID"].astype(str).isin(test_id_list)].copy()
+
+            train_label = train_data["Grade"]
+            test_label = test_data["Grade"]
+
+            selected_features_path = os.path.join(
+                "./dataset/Dataset_split/PMB",
+                f"Parallel/{n_folds}-fold",
+                opt.modality,
+                f"f_ratio_{opt.feature_ratio}_cor_{opt.corr_threshold}",
+                f"fold_{fold}_selected_{method}_features_with_info.csv",
+            )
+            selected_features = pd.read_csv(selected_features_path)
+            selected_features = selected_features[selected_features.columns[0]].tolist()
+
+            if len(selected_features) > 30:
+                selected_features = selected_features[:30]
+
+            # Ensure train/test feature columns are consistent and do not include excluded columns (e.g., ID, Grade)
+            columns_to_remove = [
+                col for col in exclude_columns if col in selected_features
+            ]
+            use_features = [
+                f for f in selected_features if f not in columns_to_remove
+            ]
+
+            X_train = train_data[use_features]
+            X_test = test_data[use_features]
+            y_train = train_label
+            y_test = test_label
+            y_test = np.ravel(y_test)
+            # X_test = test_data.drop(columns=exclude_columns)
+            scoring = {
+                "AUC": "roc_auc_ovr",
+                "Accuracy": make_scorer(accuracy_score),
+                "precision": make_scorer(
+                    precision_score, average="macro", zero_division=0
+                ),
+                "recall": "recall_macro",
+                "f1": make_scorer(f1_score, average="macro", zero_division=0),
+            }
+
+            outfile = method + "_performance.csv"
+            prob_file = method + "_probability.csv"
+
+            if need_train:
+                performance, predictions_df = model_selection(
+                    X_train,
+                    y_train,
+                    X_test,
+                    y_test,
+                    test_data,
+                    opt.modality,
+                    need_predict_score=True,
+                )
+
+                # performance.to_csv(os.path.join(outdir, outfile), encoding='utf-16', sep='\t', index=True,
+                #                    na_rep='NULL')
+                performance["fold"] = fold
+                performance["method"] = method
+                all_performance.append(performance)
+                predictions_df["fold"] = fold
+                predictions_df["method"] = method
+                all_oof_preds.append(predictions_df)
+            else:
+                performance = pd.read_csv(
+                    os.path.join(outdir, outfile),
+                    encoding="utf-16",
+                    sep="\t",
+                    na_values="NULL",
+                    index_col=0,
+                )
+
+    all_perf_df = pd.concat(all_performance, ignore_index=True)
+    all_perf_df.to_csv(
+        os.path.join(outdir, "all_folds_performance.csv"),
+        encoding="utf-16",
+        sep="\t",
+        index=False,
+    )
+
+    # Compute mean and std of AUC for each method + Classifier
+    summary = (
+        all_perf_df.groupby(["method", "Classifier"])["AUC"]
+        .agg(["mean", "std"])
+        .reset_index()
+    )
+    summary.to_csv(
+        os.path.join(outdir, "summary_performance.csv"),
+        encoding="utf-16",
+        sep="\t",
+        index=False,
+    )
+
+    # Select the method + classifier combination with the highest mean AUC
+    best_row = summary.loc[summary["mean"].idxmax()]
+    best_method = best_row["method"]
+    best_classifier = best_row["Classifier"]
+    print("Best combination (highest mean AUC):", best_method, best_classifier)
+
+    # Merge prediction probabilities from all folds
+    all_oof_df = pd.concat(all_oof_preds, ignore_index=True)
+    all_oof_df.to_csv(
+        os.path.join(outdir, "all_oof_predictions.csv"),
+        encoding="utf-16",
+        sep="\t",
+        index=False,
+    )
+
+    # Keep only the OOF predictions of the best method + classifier
+    # Ensure the Classifier column name is consistent with performance
+    best_oof_df = all_oof_df[
+        (all_oof_df["method"] == best_method)
+        & (all_oof_df["Classifier"] == best_classifier)
+    ]
+    best_oof_df.to_csv(
+        os.path.join(outdir, "best_oof_predictions.csv"),
+        encoding="utf-16",
+        sep="\t",
+        index=False,
+    )
+
+    # Optional: you can compute the final overall AUC using prob_1 and true_label from best_oof_df
+    final_auc = roc_auc_score(best_oof_df["true_label"], best_oof_df["prob_1"])
+    print("Overall out-of-fold AUC:", final_auc)
+
+
+if __name__ == "__main__":
     opt = parse_option(print_option=True)
     need_train = True
-    modalitylist = ['PTV-HFL-RD',"HFL-RD","PTV-RD", "LFL-R",'PTV-HV-RD',"LFL-D","LFL-RD","PTV-HQ-RD","GTV-RD",
-               'WL-D','WL-R','WL-RD','HFL-R', "HFL-D"]
-    for i in modalitylist:
-        opt.modality = i
-        possible_filenames = [
-            f"{opt.modality}_merged_data_part_1_normalized.csv",
-            f"{opt.modality}_merged_data_normalized.csv"
-        ]
-        file_list = []
-        for filename in possible_filenames:
-            potential_path = os.path.join('./Parallel/PMB/', filename)
-            if os.path.exists(potential_path):
-                file_list.append(potential_path)
-                break
+    feature_selected_method = ["lasso", "fscore", "mi"]
 
-        opt.data_path = file_list
-        print('Data path : %s' % opt.data_path)
-        data_df = load_data(file_list)
+    print("Choose run mode:")
+    print("1. Run all modalities")
+    print("2. Run a specific modality")
+    print("\nModality index map:")
+    for idx, name in modality_map.items():
+        print(f"{idx:2d}: {name}")
+    print(
+        "\nNote: The numbers above are modality indices. First choose the run mode (1 or 2),"
+    )
+    print(
+        "then (if you choose 2) enter the specific modality index according to the map above."
+    )
 
-        is_nan = data_df.isna()
+    mode = input(
+        "Enter 1 to run ALL modalities, or 2 to run ONE specific modality: "
+    ).strip()
 
-        nan_locations = np.where(is_nan)
-
-        for row, col in zip(nan_locations[0], nan_locations[1]):
-            print(f"NaN value found at row {row}, column {col}")
-
-        zero_columns = data_df.columns[(data_df == 0).all()].tolist()
-        if zero_columns:
-            print("Columns with all zeros:", zero_columns)
-            sift_input = data_df.drop(columns=zero_columns)
-
-        columns_to_exclude = [
-            'Age', 'Dose', 'Gender_1', 'Gender_2',
-            'Smoke_1', 'Smoke_2', 'Treatment_0', 'Treatment_1', 'Treatment_2', 'Grade'
-        ]
-
-        if opt.need_clinical_info:
-            # Exclude only 'Grade'
-            exclude_columns = ['Grade']
-            outdir = os.path.join('./Parallel/PMB/multiomics_result', opt.modality)
-            if not os.path.exists(outdir):
-                os.makedirs(outdir)
-        else:
-            print('do not need clinical information')
-            # Exclude these 10 columns
-            exclude_columns = columns_to_exclude
-            outdir = os.path.join('./Parallel/PMB/multiomics_result', opt.modality)
-            if not os.path.exists(outdir):
-                os.makedirs(outdir)
-        # if opt.need_classifier_optimization:
-        #     outdir = os.path.join(outdir, 'with_ml_classification')
-        #     if not os.path.exists(outdir):
-        #         os.makedirs(outdir)
-        # else:
-        #     outdir = os.path.join(outdir, 'without_ml_classification')
-        #     if not os.path.exists(outdir):
-        #         os.makedirs(outdir)
-
-        feature_selected_method = [
-            'lasso','fscore','mi'
-        ]
-
-        # additional_columns = ['Grade']
-        n_folds = 10
-        all_performance = []
-        all_oof_preds = []
-        for fold in range(1, n_folds + 1):
-            for method in feature_selected_method:
-                selected_train_case_txt_path = os.path.join('./dataset/Dataset_split/PMB',f'Parallel/{n_folds}-fold',
-                                                      opt.modality,f'f_ratio_{opt.feature_ratio}_cor_{opt.corr_threshold}',
-                                                      f'fold_{fold}_train.txt')
-                selected_test_case_txt_path = os.path.join('./dataset/Dataset_split/PMB', f'Parallel/{n_folds}-fold',
-                                                            opt.modality,
-                                                            f'f_ratio_{opt.feature_ratio}_cor_{opt.corr_threshold}',
-                                                            f'fold_{fold}_test.txt')
-
-                train_id_list = read_id_list(selected_train_case_txt_path)
-                test_id_list = read_id_list(selected_test_case_txt_path)
-
-                train_data = data_df[data_df['ID'].astype(str).isin(train_id_list)].copy()
-                test_data = data_df[data_df['ID'].astype(str).isin(test_id_list)].copy()
-
-                train_label = train_data['Grade']
-                test_label = test_data['Grade']
-
-                selected_features_path = os.path.join('./dataset/Dataset_split/PMB',f'Parallel/{n_folds}-fold',
-                                                      opt.modality,f'f_ratio_{opt.feature_ratio}_cor_{opt.corr_threshold}',
-                                                      f'fold_{fold}_selected_{method}_features_with_info.csv')
-                selected_features = pd.read_csv(selected_features_path)
-                selected_features = selected_features[selected_features.columns[0]].tolist()
-
-                if len(selected_features) > 30:
-                    selected_features = selected_features[:30]
-
-                # Ensure train/test feature columns are consistent and do not include excluded columns (e.g., ID, Grade)
-                columns_to_remove = [col for col in exclude_columns if col in selected_features]
-                use_features = [f for f in selected_features if f not in columns_to_remove]
-
-                X_train = train_data[use_features]
-                X_test = test_data[use_features]
-                y_train = train_label
-                y_test = test_label
-                y_test = np.ravel(y_test)
-                # X_test = test_data.drop(columns=exclude_columns)
-                scoring = {'AUC': 'roc_auc_ovr', 'Accuracy': make_scorer(accuracy_score),
-                           'precision': make_scorer(precision_score, average='macro', zero_division=0), 
-                           'recall': 'recall_macro',
-                           'f1': make_scorer(f1_score, average='macro', zero_division=0)}
-
-                outfile = method + "_performance.csv"
-                prob_file = method + "_probability.csv"
-
-                if need_train:
-                    performance, predictions_df = model_selection(X_train, y_train, X_test, y_test,test_data,
-                                                                  opt.modality,need_predict_score=True)
-
-                    # performance.to_csv(os.path.join(outdir, outfile), encoding='utf-16', sep='\t', index=True,
-                    #                    na_rep='NULL')
-                    performance['fold'] = fold
-                    performance['method'] = method
-                    all_performance.append(performance)
-                    predictions_df['fold'] = fold
-                    predictions_df['method'] = method
-                    all_oof_preds.append(predictions_df)
+    if mode == "1":
+        print("\nYou chose to run ALL modalities.")
+        for idx in sorted(modality_map.keys()):
+            modality = modality_map[idx]
+            print(f"\n=== Running modality {idx}: {modality} ===")
+            run_for_modality(opt, modality, need_train, feature_selected_method)
+    elif mode == "2":
+        print("\nYou chose to run ONE specific modality.")
+        print("Please refer to the modality index map above (e.g. 1 = HFL-R).")
+        while True:
+            idx_str = input(
+                f"Enter modality index (1–{len(modality_map)}, e.g. 1 for HFL-R): "
+            ).strip()
+            try:
+                idx = int(idx_str)
+                if idx in modality_map:
+                    modality = modality_map[idx]
+                    print(f"\n=== Running modality {idx}: {modality} ===")
+                    run_for_modality(opt, modality, need_train, feature_selected_method)
+                    break
                 else:
-                    performance = pd.read_csv(os.path.join(outdir, outfile),
-                                              encoding='utf-16',
-                                              sep='\t',
-                                              na_values='NULL',
-                                              index_col=0)
-
-        all_perf_df = pd.concat(all_performance, ignore_index=True)
-        all_perf_df.to_csv(os.path.join(outdir, "all_folds_performance.csv"), encoding='utf-16', sep='\t', index=False)
-
-        # Compute mean and std of AUC for each method + Classifier
-        summary = all_perf_df.groupby(['method', 'Classifier'])['AUC'].agg(['mean', 'std']).reset_index()
-        summary.to_csv(os.path.join(outdir, "summary_performance.csv"), encoding='utf-16', sep='\t', index=False)
-
-        # Select the method + classifier combination with the highest mean AUC
-        best_row = summary.loc[summary['mean'].idxmax()]
-        best_method = best_row['method']
-        best_classifier = best_row['Classifier']
-        print('Best combination (highest mean AUC):', best_method, best_classifier)
-
-        # Merge prediction probabilities from all folds
-        all_oof_df = pd.concat(all_oof_preds, ignore_index=True)
-        all_oof_df.to_csv(os.path.join(outdir, "all_oof_predictions.csv"), encoding='utf-16', sep='\t', index=False)
-
-        # Keep only the OOF predictions of the best method + classifier
-        # Ensure the Classifier column name is consistent with performance
-        best_oof_df = all_oof_df[
-            (all_oof_df['method'] == best_method) &
-            (all_oof_df['Classifier'] == best_classifier)
-            ]
-        best_oof_df.to_csv(os.path.join(outdir, "best_oof_predictions.csv"), encoding='utf-16', sep='\t', index=False)
-
-        # Optional: you can compute the final overall AUC using prob_1 and true_label from best_oof_df
-        final_auc = roc_auc_score(best_oof_df['true_label'], best_oof_df['prob_1'])
-        print("Overall out-of-fold AUC:", final_auc)
+                    print(
+                        f"Index must be between 1 and {len(modality_map)}. Please try again."
+                    )
+            except ValueError:
+                print(
+                    f"Invalid input. Please enter an integer between 1 and {len(modality_map)}."
+                )
+    else:
+        print("Invalid choice. Please run the script again and enter 1 or 2.")
 
